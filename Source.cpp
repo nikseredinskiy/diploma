@@ -47,6 +47,7 @@ MatrixXd f(MatrixXd x, int N){
 	MatrixXd temp(N, N);
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
+			//TODO: remove filling with zeros on the boundary of the matrix
 			if (i == 0 || j == 0 || i == N - 1 || j == N - 1){
 				temp(i, j) = 0;
 			}
@@ -67,6 +68,7 @@ MatrixXd F_s_with_prev(MatrixXd x, int s, MatrixXd f_s_1, MatrixXd f_s_2 ,double
 		return x;
 	}
 	if (s == 1){
+		//DONE: changed alpha_j/beta_j/gamma_j parameter from s-1 to s(due to a page 587,Fadeev)
 		return alpha_j(s)*fi(f_s_1, w, N) + beta_j(s) * f_s_1;
 	}
 	if (s > 1){
@@ -84,6 +86,9 @@ void main(){
 	cout << "Enter N = ";
 	cin >> N;
 	MatrixXd u(N, N);
+
+	//Initialization for u
+	//TODO: remove certain conditions from u
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
 			u(i, j) = 0;
@@ -108,6 +113,7 @@ void main(){
 
 	cout << u << endl;
 
+	//Initialization for Fs-1, Fs-2 and Fs
 	MatrixXd f_s_1(N, N), f_s_2(N, N), f_s(N, N);
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
@@ -135,6 +141,7 @@ void main(){
 		u = f_s;
 	}
 
+	cout << "Martix u:" << endl;
 	cout << u;
 	
 	cout << endl;
