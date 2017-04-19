@@ -31,8 +31,31 @@ double gamma_j(int j){
 	}
 }
 
+//DONE: Created a function that will return a proper boundary value if needed
+double u_ij(int i, int j, int N, MatrixXd u){
+	if (i >= 0 && j >= 0 && i < N && j < N){
+		return u(i, j);
+	}
+	if (j == -1){
+		return 1 - (i + 1);
+	}
+	else {
+		if (i == -1){
+			return 1 - (j + 1);
+		}
+	}
+	if (j == N){
+		return 0;
+	}
+	else {
+		if (i == N){
+			return 0;
+		}
+	}
+}
+
 double f_ij(int N, int i, int j, MatrixXd u){
-	double result = N * N * (u(i - 1, j) + u(i + 1, j) - 4 * u(i, j) + u(i, j - 1) + u(i, j + 1));
+	double result = N * N * (u_ij(i - 1, j, N, u) + u_ij(i + 1, j, N, u) - 4 * u_ij(i, j, N, u) + u_ij(i, j - 1, N, u) + u_ij(i, j + 1, N, u));
 	double sum_p_q = 0;
 	for (int p = 1; p < N; p++){
 		for (int q = 1; q < N; q++){
@@ -48,12 +71,8 @@ MatrixXd f(MatrixXd x, int N){
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
 			//TODO: remove filling with zeros on the boundary of the matrix
-			if (i == 0 || j == 0 || i == N - 1 || j == N - 1){
-				temp(i, j) = 0;
-			}
-			else {
-				temp(i, j) = f_ij(N, i, j, x);
-			}
+			//TEST: filling with zeros has been removed
+			temp(i, j) = f_ij(N, i, j, x);
 		}
 	}
 	return temp;
@@ -89,25 +108,10 @@ void main(){
 
 	//Initialization for u
 	//TODO: remove certain conditions from u
+	//DONE: removed certain conditions from u
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
 			u(i, j) = 0;
-			if (j == 0){
-				u(i, j) = 1 - i;
-			}
-			else {
-				if (i == 0){
-					u(i, j) = 1 - j;
-				}
-			}
-			if (j == (N - 1)){
-				u(i, j) = 0;
-			}
-			else {
-				if (i == (N - 1)){
-					u(i, j) = 0;
-				}
-			}
 		}
 	}
 
