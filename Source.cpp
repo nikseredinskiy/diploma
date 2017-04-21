@@ -6,7 +6,7 @@ using Eigen::MatrixXd;
 
 double alpha_j(int j){
 	if (j == 0){
-		return (double)3 / 4;
+		return (double)3 / 4.;
 	}
 	else {
 		return (double)j * (2 * j + 1) / ((j + 1) * (j + 1));
@@ -15,7 +15,7 @@ double alpha_j(int j){
 
 double beta_j(int j){
 	if (j == 0){
-		return (double)1 / 4;
+		return (double)1 / 4.;
 	}
 	else {
 		return (double)j / ((2 * j - 1) * (j + 1) * (j + 1));
@@ -37,11 +37,11 @@ double u_ij(int i, int j, int N, MatrixXd u){
 		return u(i, j);
 	}
 	if (j == -1){
-		return 1 - (i + 1);
+		return 1 - (i + 1) / (double)N;
 	}
 	else {
 		if (i == -1){
-			return 1 - (j + 1);
+			return 1 - (j + 1)/(double)N;
 		}
 	}
 	if (j == N){
@@ -88,22 +88,22 @@ MatrixXd F_s_with_prev(MatrixXd x, int s, MatrixXd f_s_1, MatrixXd f_s_2 ,double
 	}
 	if (s == 1){
 		//DONE: changed alpha_j/beta_j/gamma_j parameter from s-1 to s(due to a page 587,Fadeev)
-		return alpha_j(s)*fi(f_s_1, w, N) + beta_j(s) * f_s_1;
+		return alpha_j(s-1)*fi(f_s_1, w, N) + beta_j(s-1) * f_s_1;
 	}
 	if (s > 1){
-		return alpha_j(s)*fi(f_s_1, w, N) + beta_j(s) * f_s_1 + gamma_j(s) * f_s_2;
+		return alpha_j(s-1)*fi(f_s_1, w, N) + beta_j(s-1) * f_s_1 - gamma_j(s-1) * f_s_2;
 	}
 }
 
 void main(){
-	int N;
+	int N = 5;
 	int M = 14;
 	int s = 101;
 	double E = 0.00000001;
-	double w = 0.00001;
+	double w = 1/((double)8*N*N);
 	
-	cout << "Enter N = ";
-	cin >> N;
+	//cout << "Enter N = ";
+	//cin >> N;
 	MatrixXd u(N, N);
 
 	//Initialization for u
@@ -116,7 +116,7 @@ void main(){
 	}
 
 	cout << u << endl;
-
+	
 	//Initialization for Fs-1, Fs-2 and Fs
 	MatrixXd f_s_1(N, N), f_s_2(N, N), f_s(N, N);
 	for (int i = 0; i < N; i++){
@@ -143,11 +143,11 @@ void main(){
 			}
 		}
 		u = f_s;
-	}
 
-	cout << "Martix u:" << endl;
-	cout << u;
-	
+		cout << "Martix u:" << endl;
+		cout << u << endl;
+	} 
+
 	cout << endl;
 	system("pause");
 }
