@@ -1,8 +1,8 @@
 #include <iostream>
-#include <Eigen/Dense>
+#include <Eigen/Eigen>
 
 using namespace std;
-using Eigen::MatrixXd;
+using namespace Eigen;
 
 double alpha_j(int j){
 	if (j == 0){
@@ -95,6 +95,42 @@ MatrixXd F_s_with_prev(MatrixXd x, int s, MatrixXd f_s_1, MatrixXd f_s_2 ,double
 	}
 }
 
+MatrixXd r(MatrixXd x, double w, int N){
+	return fi(x, w, N) - x;
+}
+
+MatrixXd createMatrixV(Array<MatrixXd, Dynamic, 1> r_i, int N, int M){
+	MatrixXd temp(N, M);
+	for (int i = 0; i < M; i++){
+		temp.col(i) = r_i(i) - r_i(M);
+	}
+	return temp;
+}
+
+MatrixXd lsdamp(Array<MatrixXd, Dynamic, 1> x_i, int M, double w, int N){
+	Array<MatrixXd, Dynamic, 1> r_i;
+	for (int i = 0; i < M; i++){
+		r_i(i) = r(x_i(i), w, N);
+	}
+	MatrixXd V(N, M);
+	V = createMatrixV(r_i, N, M);
+
+	LeastSquaresConjugateGradient<MatrixXd> lscg;
+	lscg.compute(V);
+	VectorXd c = lscg.solve(-r(x_i(M), w, N));
+
+	MatrixXd newU(N, N);
+	newU.setZero();
+
+	for (int i = 0; i < M; i++){
+		newU = newU + c(i)*x_i(i);
+	}
+
+	newU = newU + (1 - c.sum())*x_i(M);
+
+	return newU;
+}
+
 void main(){
 	int N = 5;
 	int M = 14;
@@ -109,45 +145,58 @@ void main(){
 	//Initialization for u
 	//TODO: remove certain conditions from u
 	//DONE: removed certain conditions from u
-	for (int i = 0; i < N; i++){
-		for (int j = 0; j < N; j++){
-			u(i, j) = 0;
-		}
-	}
-
-	cout << u << endl;
+	//TODO: replace by setZero() method
+	//DONE
+	u.setZero();
 	
 	//Initialization for Fs-1, Fs-2 and Fs
+	//TODO:replace by setZero() method
+	//DONE
 	MatrixXd f_s_1(N, N), f_s_2(N, N), f_s(N, N);
-	for (int i = 0; i < N; i++){
-		for (int j = 0; j < N; j++){
-			f_s_1(i, j) = 0;
-			f_s_2(i, j) = 0;
-			f_s(i, j) = 0;
+	f_s_1.setZero();
+	f_s_2.setZero();
+	f_s.setZero();
+
+	Array<MatrixXd, Dynamic, 1> x_i(M + 1);
+	
+	while (r(u, w, N).norm() > E){
+		x_i(0) = u;
+		//is there need to put M + 1 instead of M
+		//due to x_i will not have x_i(M) item
+		for (int k = 1; k < M + 1; k++){
+			int _s = 0;
+			int numberOfIterations = 0;
+			while (true){
+				if (_s == 0){
+					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+				}
+				if (_s == 1){
+					f_s_1 = f_s;
+					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+				}
+				if (_s > 2){
+					f_s_2 = f_s_1;
+					f_s_1 = f_s;
+					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+				}
+				if (r(f_s, w, N).norm() < E){
+					numberOfIterations = _s;
+					break;
+				}
+				_s++;
+			}
+			u = f_s; //x_i that will be passed to lsdamp function
+			cout << "M = " << k << " | iterNum = " << numberOfIterations << endl;
+			cout << "Matrix u:" << endl;
+			cout << u << endl;
+
+			x_i(k) = f_s;
 		}
+
+		//now we have x_0...x_m and can send it to lsdamp
+		u = lsdamp(x_i, M, w, N);
 	}
-
-	for (int k = 1; k < M; k++){
-		for (int _s = 0; _s <= s; _s++){
-			if (_s == 0){
-				f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
-			}
-			if (_s == 1){
-				f_s_1 = f_s;
-				f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
-			}
-			if (_s > 2){
-				f_s_2 = f_s_1;
-				f_s_1 = f_s;
-				f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
-			}
-		}
-		u = f_s;
-
-		cout << "Martix u:" << endl;
-		cout << u << endl;
-	} 
-
+	
 	cout << endl;
 	system("pause");
 }
