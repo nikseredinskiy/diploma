@@ -3,6 +3,7 @@
 
 using namespace std;
 using namespace Eigen;
+typedef Eigen::Triplet<double> Trip;
 
 double alpha_j(int j){
 	if (j == 0){
@@ -99,25 +100,47 @@ MatrixXd r(MatrixXd x, double w, int N){
 	return fi(x, w, N) - x;
 }
 
-MatrixXd createMatrixV(Array<MatrixXd, Dynamic, 1> r_i, int N, int M){
-	MatrixXd temp(N, M);
+
+//Seems like it works now
+MatrixXd createMatrixV(Array<VectorXd, Dynamic, 1> r_i, int N, int M){
+	MatrixXd temp(N*N, M);
 	for (int i = 0; i < M; i++){
 		temp.col(i) = r_i(i) - r_i(M);
 	}
 	return temp;
 }
+/*
+SparseMatrix <double> createSparseMatrixV(Array<MatrixXd, Dynamic, 1> r_i, int N, int M) {
+	SparseMatrix<double> temp(N, M);
+	vector<Trip> tripletList;
+	//N * M = estimation_of_entries
+	tripletList.reserve(N * M);
+
+	for (int i = 0; i < M; i++){
+		for (int j = 0; j < M; j++){
+			tripletList.push_back(Trip(i, j, r_i(i)(j)));
+		}
+	}
+
+	temp.setFromTriplets(tripletList.begin(), tripletList.end());
+
+	return temp;
+}*/
 
 MatrixXd lsdamp(Array<MatrixXd, Dynamic, 1> x_i, int M, double w, int N){
-	Array<MatrixXd, Dynamic, 1> r_i;
-	for (int i = 0; i < M; i++){
-		r_i(i) = r(x_i(i), w, N);
+	Array<VectorXd, Dynamic, 1> r_i(M + 1);
+	for (int i = 0; i < M + 1; i++){
+		MatrixXd tempRI = r(x_i(i), w, N);
+		Map<VectorXd> r_i_vector(tempRI.data(), tempRI.size());
+		r_i(i) = r_i_vector;
 	}
-	MatrixXd V(N, M);
+	MatrixXd V(N*N, M);
 	V = createMatrixV(r_i, N, M);
 
-	LeastSquaresConjugateGradient<MatrixXd> lscg;
-	lscg.compute(V);
-	VectorXd c = lscg.solve(-r(x_i(M), w, N));
+	MatrixXd r_temp = -r(x_i(M), w, N);
+	Map<VectorXd> r_temp_vector(r_temp.data(), r_temp.size());
+
+	VectorXd c = V.colPivHouseholderQr().solve(r_temp_vector);
 
 	MatrixXd newU(N, N);
 	newU.setZero();
@@ -127,6 +150,9 @@ MatrixXd lsdamp(Array<MatrixXd, Dynamic, 1> x_i, int M, double w, int N){
 	}
 
 	newU = newU + (1 - c.sum())*x_i(M);
+
+	cout << "Matrix after lsdamp:" << endl;
+	cout << newU << endl;
 
 	return newU;
 }
@@ -157,16 +183,17 @@ void main(){
 	f_s_2.setZero();
 	f_s.setZero();
 
-	Array<MatrixXd, Dynamic, 1> x_i(M + 1);
 	
+	Array<MatrixXd, Dynamic, 1> x_i(M + 1);
+	x_i(0) = u;
+	int countOfTheProcessRun = 0;
 	while (r(u, w, N).norm() > E){
-		x_i(0) = u;
+		countOfTheProcessRun++;
 		//is there need to put M + 1 instead of M
 		//due to x_i will not have x_i(M) item
 		for (int k = 1; k < M + 1; k++){
-			int _s = 0;
 			int numberOfIterations = 0;
-			while (true){
+			for (int _s = 0; _s < s; _s++){
 				if (_s == 0){
 					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
 				}
@@ -179,24 +206,22 @@ void main(){
 					f_s_1 = f_s;
 					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
 				}
-				if (r(f_s, w, N).norm() < E){
-					numberOfIterations = _s;
-					break;
-				}
-				_s++;
 			}
 			u = f_s; //x_i that will be passed to lsdamp function
-			cout << "M = " << k << " | iterNum = " << numberOfIterations << endl;
+			cout << "M = " << k << " | iterNum = " << s << endl;
 			cout << "Matrix u:" << endl;
 			cout << u << endl;
 
 			x_i(k) = f_s;
+			//
 		}
 
 		//now we have x_0...x_m and can send it to lsdamp
 		u = lsdamp(x_i, M, w, N);
 	}
 	
+	cout << "Process has been run " << countOfTheProcessRun << " times" << endl;
+
 	cout << endl;
 	system("pause");
 }
