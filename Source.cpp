@@ -1,9 +1,9 @@
 #include <iostream>
+#include <fstream>
 #include <Eigen/Eigen>
 
 using namespace std;
 using namespace Eigen;
-typedef Eigen::Triplet<double> Trip;
 
 double alpha_j(int j){
 	if (j == 0){
@@ -55,113 +55,95 @@ double u_ij(int i, int j, int N, MatrixXd u){
 	}
 }
 
-double f_ij(int N, int i, int j, MatrixXd u){
+double f_ij(int N, int i, int j, MatrixXd u, double sum_p_q){
 	double result = N * N * (u_ij(i - 1, j, N, u) + u_ij(i + 1, j, N, u) - 4 * u_ij(i, j, N, u) + u_ij(i, j - 1, N, u) + u_ij(i, j + 1, N, u));
-	double sum_p_q = 0;
-	for (int p = 1; p < N; p++){
-		for (int q = 1; q < N; q++){
-			sum_p_q = sum_p_q + cosh(u(p, q));
-		}
-	}
 	result = result - 10 * (sum_p_q * sum_p_q) / (N*N*N*N);
 	return (double)result;
 }
 
-MatrixXd f(MatrixXd x, int N){
-	MatrixXd temp(N, N);
+void f(MatrixXd x, int N, MatrixXd &result_f){
+	double sum_p_q = 0;
+	for (int p = 1; p < N; p++){
+		for (int q = 1; q < N; q++){
+			sum_p_q = sum_p_q + cosh(x(p, q));
+		}
+	}
 	for (int i = 0; i < N; i++){
 		for (int j = 0; j < N; j++){
 			//TODO: remove filling with zeros on the boundary of the matrix
 			//TEST: filling with zeros has been removed
-			temp(i, j) = f_ij(N, i, j, x);
+			result_f(i, j) = f_ij(N, i, j, x, sum_p_q);
 		}
 	}
-	return temp;
 }
 
-MatrixXd fi(MatrixXd x, double w, int N){
-	return x + w * f(x, N);
+void fi(MatrixXd x, double w, int N, MatrixXd &result_f, MatrixXd &result_fi){
+	f(x, N, result_f);
+	result_fi = x + w * result_f;
 }
 
-MatrixXd F_s_with_prev(MatrixXd x, int s, MatrixXd f_s_1, MatrixXd f_s_2 ,double w, int N){
+void F_s_with_prev(MatrixXd x, int s, MatrixXd f_s_1, MatrixXd f_s_2, double w, int N, MatrixXd &f_s, MatrixXd &result_f, MatrixXd &result_fi){
 	if (s == 0){
-		return x;
+		f_s = x;
 	}
 	if (s == 1){
 		//DONE: changed alpha_j/beta_j/gamma_j parameter from s-1 to s(due to a page 587,Fadeev)
-		return alpha_j(s-1)*fi(f_s_1, w, N) + beta_j(s-1) * f_s_1;
+		fi(f_s_1, w, N, result_f, result_fi);
+		f_s = alpha_j(s - 1)* result_fi + beta_j(s - 1) * f_s_1;
 	}
 	if (s > 1){
-		return alpha_j(s-1)*fi(f_s_1, w, N) + beta_j(s-1) * f_s_1 - gamma_j(s-1) * f_s_2;
+		fi(f_s_1, w, N, result_f, result_fi);
+		f_s = alpha_j(s - 1)*result_fi + beta_j(s - 1) * f_s_1 - gamma_j(s - 1) * f_s_2;
 	}
 }
 
-MatrixXd r(MatrixXd x, double w, int N){
-	return fi(x, w, N) - x;
+MatrixXd r(MatrixXd x, double w, int N, MatrixXd &result_f,MatrixXd &result_fi){
+	fi(x, w, N, result_f, result_fi);
+	return result_fi - x;
 }
 
 
 //Seems like it works now
-MatrixXd createMatrixV(Array<VectorXd, Dynamic, 1> r_i, int N, int M){
-	MatrixXd temp(N*N, M);
+void createMatrixV(Array<VectorXd, Dynamic, 1> &r_i, int N, int M, MatrixXd &V){
 	for (int i = 0; i < M; i++){
-		temp.col(i) = r_i(i) - r_i(M);
+		V.col(i) = r_i(i) - r_i(M);
 	}
-	return temp;
 }
-/*
-SparseMatrix <double> createSparseMatrixV(Array<MatrixXd, Dynamic, 1> r_i, int N, int M) {
-	SparseMatrix<double> temp(N, M);
-	vector<Trip> tripletList;
-	//N * M = estimation_of_entries
-	tripletList.reserve(N * M);
 
-	for (int i = 0; i < M; i++){
-		for (int j = 0; j < M; j++){
-			tripletList.push_back(Trip(i, j, r_i(i)(j)));
-		}
-	}
+void countC(VectorXd &c, MatrixXd &V, Map<VectorXd> &r_temp_vector){
+	c = V.colPivHouseholderQr().solve(r_temp_vector);
+}
 
-	temp.setFromTriplets(tripletList.begin(), tripletList.end());
-
-	return temp;
-}*/
-
-MatrixXd lsdamp(Array<MatrixXd, Dynamic, 1> x_i, int M, double w, int N){
-	Array<VectorXd, Dynamic, 1> r_i(M + 1);
+void lsdamp(Array<MatrixXd, Dynamic, 1> &x_i, int M, double w, int N, MatrixXd &u, MatrixXd &result_f, MatrixXd &result_fi, MatrixXd &V, VectorXd &c, Array<VectorXd, Dynamic, 1> &r_i){
+	MatrixXd tempRI;
 	for (int i = 0; i < M + 1; i++){
-		MatrixXd tempRI = r(x_i(i), w, N);
+		tempRI = r(x_i(i), w, N, result_f,result_fi);
 		Map<VectorXd> r_i_vector(tempRI.data(), tempRI.size());
 		r_i(i) = r_i_vector;
 	}
-	MatrixXd V(N*N, M);
-	V = createMatrixV(r_i, N, M);
-
-	MatrixXd r_temp = -r(x_i(M), w, N);
+	createMatrixV(r_i, N, M, V);
+	
+	MatrixXd r_temp = -r(x_i(M), w, N, result_f,result_fi);
 	Map<VectorXd> r_temp_vector(r_temp.data(), r_temp.size());
-
-	VectorXd c = V.colPivHouseholderQr().solve(r_temp_vector);
-
-	MatrixXd newU(N, N);
-	newU.setZero();
-
+	
+	countC(c, V, r_temp_vector);
+	
+	u.setZero();
 	for (int i = 0; i < M; i++){
-		newU = newU + c(i)*x_i(i);
+		u = u + c(i)*x_i(i);
 	}
+	u = u + (1 - c.sum())*x_i(M);
 
-	newU = newU + (1 - c.sum())*x_i(M);
+	VectorXd(M + 1).swap(c);
+	MatrixXd(N*N, M).swap(V);
 
-	cout << "Matrix after lsdamp:" << endl;
-	cout << newU << endl;
-
-	return newU;
 }
 
 void main(){
-	int N = 5;
-	int M = 14;
-	int s = 101;
-	double E = 0.00000001;
+	int N = 25;
+	int M = 4;
+	int s = 30;
+	double E = 0.000000000001;
 	double w = 1/((double)8*N*N);
 	
 	//cout << "Enter N = ";
@@ -178,49 +160,62 @@ void main(){
 	//Initialization for Fs-1, Fs-2 and Fs
 	//TODO:replace by setZero() method
 	//DONE
-	MatrixXd f_s_1(N, N), f_s_2(N, N), f_s(N, N);
+	MatrixXd f_s_1(N, N), f_s_2(N, N), f_s(N, N), result_f(N, N), result_fi(N, N), V(N*N, M);
+	VectorXd c(M + 1);
+	Array<VectorXd, Dynamic, 1> r_i(M + 1);
 	f_s_1.setZero();
 	f_s_2.setZero();
 	f_s.setZero();
-
+	result_f.setZero();
+	result_fi.setZero();
 	
 	Array<MatrixXd, Dynamic, 1> x_i(M + 1);
-	x_i(0) = u;
 	int countOfTheProcessRun = 0;
-	while (r(u, w, N).norm() > E){
+	int iterationsCount = 0;
+	ofstream resultsFile;
+	resultsFile.open("results_25_4_30_with.csv");
+
+	while (r(u, w, N, result_f,result_fi).norm() > E){
+		x_i(0) = u;
 		countOfTheProcessRun++;
 		//is there need to put M + 1 instead of M
 		//due to x_i will not have x_i(M) item
 		for (int k = 1; k < M + 1; k++){
-			int numberOfIterations = 0;
 			for (int _s = 0; _s < s; _s++){
+				iterationsCount++;
 				if (_s == 0){
-					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+					F_s_with_prev(u, _s, f_s_1, f_s_2, w, N, f_s, result_f, result_fi);
 				}
 				if (_s == 1){
 					f_s_1 = f_s;
-					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+					F_s_with_prev(u, _s, f_s_1, f_s_2, w, N, f_s, result_f, result_fi);
 				}
 				if (_s > 2){
 					f_s_2 = f_s_1;
 					f_s_1 = f_s;
-					f_s = F_s_with_prev(u, s, f_s_1, f_s_2, w, N);
+					F_s_with_prev(u, _s, f_s_1, f_s_2, w, N, f_s, result_f, result_fi);
 				}
+				resultsFile << r(f_s, w, N, result_f, result_fi).norm() << ";" << iterationsCount << endl;
+				cout << iterationsCount << endl;
 			}
 			u = f_s; //x_i that will be passed to lsdamp function
-			cout << "M = " << k << " | iterNum = " << s << endl;
-			cout << "Matrix u:" << endl;
-			cout << u << endl;
+			//cout << "M = " << k << " | iterNum = " << s << endl;
+			//cout << "Matrix u:" << endl;
+			//cout << u << endl;
 
 			x_i(k) = f_s;
-			//
+			MatrixXd(N,N).swap(f_s);
+			MatrixXd(N, N).swap(f_s_1);
+			MatrixXd(N, N).swap(f_s_2);
 		}
-
 		//now we have x_0...x_m and can send it to lsdamp
-		u = lsdamp(x_i, M, w, N);
+		lsdamp(x_i, M, w, N, u, result_f, result_fi,V, c, r_i);
 	}
-	
+	iterationsCount++;
+	resultsFile << r(u, w, N, result_f, result_fi).norm() << ";" << iterationsCount << endl;
 	cout << "Process has been run " << countOfTheProcessRun << " times" << endl;
+	resultsFile.close();
+
 
 	cout << endl;
 	system("pause");
